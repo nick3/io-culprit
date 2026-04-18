@@ -1,0 +1,90 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            artifact: io-culprit-x86_64-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+            artifact: io-culprit-aarch64-linux-gnu
+          - target: x86_64-unknown-linux-musl
+            artifact: io-culprit-x86_64-linux-musl
+          - target: aarch64-unknown-linux-musl
+            artifact: io-culprit-aarch64-linux-musl
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release binaries
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/io-watchdog dist/
+          cp target/${{ matrix.target }}/release/io-report dist/
+          cp config/config.yaml dist/
+          cp systemd/io-watchdog.service dist/
+          tar czf ${{ matrix.artifact }}.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.tar.gz
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          TAG="v${VERSION}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "io-culprit $TAG" \
+            --generate-notes \
+            artifacts/**/*.tar.gz

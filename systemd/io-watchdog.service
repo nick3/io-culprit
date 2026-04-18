@@ -1,0 +1,14 @@
+[Unit]
+Description=I/O Culprit Watchdog
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/io-watchdog
+Restart=always
+RestartSec=5
+Environment=RUST_BACKTRACE=1
+
+[Install]
+WantedBy=multi-user.target

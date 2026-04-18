@@ -1,0 +1,11 @@
+interval_secs: 15
+util_threshold: 90
+await_threshold_ms: 50
+util_critical: 98
+iowait_threshold: 25
+consecutive_triggers: 2
+max_snapshot_rounds: 3
+incident_dir: /var/log/io-culprit
+retention_days: 30
+max_incident_size_mb: 50
+merge_window_secs: 600
