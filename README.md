@@ -1,0 +1,106 @@
+# io-culprit
+
+Lightweight Rust daemon + offline analyzer for tracking down disk I/O culprits on Debian VMs.
+
+When your VM locks up from sustained high disk I/O after running for weeks, `io-culprit` captures evidence in real time and tells you who did it after reboot.
+
+## How it works
+
+**`io-watchdog`** runs as a systemd service, sampling `/proc/diskstats` and `/proc/stat` every 15 seconds with near-zero overhead. When it detects anomalous I/O patterns, it snapshots `pidstat`, `ps`, `vmstat`, `/proc/<pid>/io`, and kernel logs into an incident directory.
+
+**`io-report`** runs manually after reboot. It reads the incident snapshots, cross-references `atop` history and kernel logs, scores each process, and outputs a ranked suspect list with evidence.
+
+## Quick start
+
+```bash
+# Build
+cargo build --release
+
+# Install binaries
+sudo cp target/release/io-watchdog /usr/local/bin/
+sudo cp target/release/io-report /usr/local/bin/
+
+# Install config
+sudo mkdir -p /etc/io-culprit
+sudo cp config/config.yaml /etc/io-culprit/
+
+# Install and start service
+sudo cp systemd/io-watchdog.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now io-watchdog
+```
+
+## After an incident
+
+```bash
+# Reboot the VM, then run:
+sudo io-report
+```
+
+Output example:
+
+```
+Incident: incident-20260418-021130
+Device: sda
+Time Range: 2026-04-18T02:11:30Z..2026-04-18T02:18:45Z
+Summary: device saturated, userspace process dominant
+Suspect #1: postgres [userspace-process] score=20 evidence=continuous top writer; %util 99%; await 420ms
+Next: inspect postgres logs and query patterns
+```
+
+A JSON report is also written to the incident directory for programmatic consumption.
+
+## Configuration
+
+Edit `/etc/io-culprit/config.yaml`:
+
+```yaml
+interval_secs: 15          # sampling interval
+util_threshold: 90          # %util trigger threshold
+await_threshold_ms: 50      # await trigger threshold (ms)
+util_critical: 98           # single-sample critical threshold
+iowait_threshold: 25        # system iowait trigger
+consecutive_triggers: 2     # consecutive samples before triggering
+max_snapshot_rounds: 3      # max snapshots per incident
+incident_dir: /var/log/io-culprit
+retention_days: 30
+```
+
+## Trigger rules
+
+An incident is triggered when any of these conditions are met:
+
+1. Same device has `%util >= 90` and `await >= 50ms` for 2 consecutive samples
+2. Any device hits `%util >= 98` in a single sample
+3. System `iowait >= 25%` with any device `%util >= 80%` for 2 consecutive samples
+
+## Suspect classification
+
+Each suspect is classified into one of:
+
+- `userspace-process` — regular application (e.g., postgres, rsync)
+- `kernel-thread` — kernel worker (e.g., kworker)
+- `filesystem-writeback` — journal/flush threads (e.g., jbd2, flush-*)
+- `memory-pressure` — swap-related (e.g., kswapd)
+- `host-or-storage-suspect` — no clear guest-side culprit found
+
+## Prerequisites
+
+- Debian (or any Linux with `/proc/diskstats` and systemd)
+- `atop` and `sysstat` installed for richer evidence:
+
+```bash
+sudo apt install -y atop sysstat
+sudo systemctl enable --now atop sysstat
+```
+
+## Building from source
+
+```bash
+cargo build --release
+cargo test
+```
+
+## License
+
+MIT
