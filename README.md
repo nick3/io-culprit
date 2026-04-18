@@ -12,6 +12,44 @@ When your VM locks up from sustained high disk I/O after running for weeks, `io-
 
 ## Quick start
 
+### Option 1: Download pre-built binaries (recommended)
+
+Go to the [Releases page](https://github.com/nick3/io-culprit/releases) and download the archive matching your architecture:
+
+| Architecture | File |
+|---|---|
+| x86_64 (Intel/AMD) | `io-culprit-x86_64-linux-gnu.tar.gz` |
+| aarch64 (ARM64) | `io-culprit-aarch64-linux-gnu.tar.gz` |
+| x86_64 static (musl) | `io-culprit-x86_64-linux-musl.tar.gz` |
+| aarch64 static (musl) | `io-culprit-aarch64-linux-musl.tar.gz` |
+
+Then install on your Debian VM:
+
+```bash
+# Download (replace URL with the actual release link)
+wget https://github.com/nick3/io-culprit/releases/latest/download/io-culprit-x86_64-linux-gnu.tar.gz
+
+# Extract
+tar xzf io-culprit-x86_64-linux-gnu.tar.gz
+
+# Install binaries
+sudo cp io-watchdog io-report /usr/local/bin/
+
+# Install config
+sudo mkdir -p /etc/io-culprit
+sudo cp config.yaml /etc/io-culprit/
+
+# Install and start service
+sudo cp io-watchdog.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now io-watchdog
+
+# Verify it's running
+sudo systemctl status io-watchdog
+```
+
+### Option 2: Build from source
+
 ```bash
 # Build
 cargo build --release
