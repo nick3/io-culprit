@@ -70,12 +70,40 @@ sudo systemctl enable --now io-watchdog
 
 ## After an incident
 
+When the VM locks up from high disk I/O and you force-reboot it:
+
+**Step 1: Run the report**
+
 ```bash
-# Reboot the VM, then run:
 sudo io-report
 ```
 
-Output example:
+It automatically reads event snapshots from `/var/log/io-culprit/`, cross-references `atop` history and the previous boot's kernel logs, and outputs a ranked suspect list.
+
+**Step 2: Read the results**
+
+Look at the Top 1-3 suspects and their evidence. The JSON report is saved at:
+
+```
+/var/log/io-culprit/incident-*/report.json
+```
+
+**Step 3: If the report shows "no incident data"**
+
+This means the system froze too fast for the watchdog to trigger. Fall back to manual investigation:
+
+```bash
+# Check atop history (navigate to the time of the incident)
+sudo atop -r /var/log/atop/atop_YYYYMMDD
+
+# Check kernel logs from the previous boot
+journalctl -k -b -1
+
+# Check for disk/filesystem errors
+dmesg -T | grep -iE 'blk|ext4|xfs|i/o error|reset|timeout'
+```
+
+**Output example:**
 
 ```
 Incident: incident-20260418-021130
@@ -85,8 +113,6 @@ Summary: device saturated, userspace process dominant
 Suspect #1: postgres [userspace-process] score=20 evidence=continuous top writer; %util 99%; await 420ms
 Next: inspect postgres logs and query patterns
 ```
-
-A JSON report is also written to the incident directory for programmatic consumption.
 
 ## Configuration
 
