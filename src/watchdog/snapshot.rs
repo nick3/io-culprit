@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub fn create_incident_dir(base: &Path, start_time: &str) -> Result<PathBuf, String> {
     let stamp = start_time
-        .replace(':', "")
-        .replace('-', "")
+        .replace([':', '-'], "")
         .replace('T', "-")
         .replace('Z', "");
     let dir = base.join(format!("incident-{stamp}"));
